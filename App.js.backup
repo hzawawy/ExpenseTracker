@@ -1,0 +1,183 @@
+import React, { useState } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+} from 'react-native';
+
+const App = () => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions, setTransactions] = useState([
+    { id: 1, amount: 45.99, category: 'Food', description: 'Grocery shopping', date: '2025-05-20', type: 'expense' },
+    { id: 2, amount: 3500.00, category: 'Income', description: 'Salary', date: '2025-05-15', type: 'income' }
+  ]);
+
+  const [newTransaction, setNewTransaction] = useState({
+    amount: '', category: '', description: '', type: 'expense'
+  });
+
+  const addTransaction = () => {
+    if (newTransaction.amount && newTransaction.category && newTransaction.description) {
+      const transaction = {
+        id: Date.now(),
+        ...newTransaction,
+        amount: parseFloat(newTransaction.amount),
+        date: new Date().toISOString().split('T')[0]
+      };
+      setTransactions([...transactions, transaction]);
+      setNewTransaction({ amount: '', category: '', description: '', type: 'expense' });
+      Alert.alert('Success', 'Transaction added!');
+    }
+  };
+
+  const getTotalExpenses = () => transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const getTotalIncome = () => transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#4F46E5" barStyle="light-content" />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>💳 Expense Tracker</Text>
+        <Text style={styles.headerSubtitle}>Track your finances</Text>
+      </View>
+
+      <ScrollView style={styles.content}>
+        {activeTab === 'dashboard' ? (
+          <View>
+            <View style={styles.statsContainer}>
+              <View style={[styles.statCard, {backgroundColor: '#dcfce7'}]}>
+                <Text style={styles.statTitle}>💰 Income</Text>
+                <Text style={styles.statAmount}>${getTotalIncome().toFixed(2)}</Text>
+              </View>
+              <View style={[styles.statCard, {backgroundColor: '#fee2e2'}]}>
+                <Text style={styles.statTitle}>💸 Expenses</Text>
+                <Text style={styles.statAmount}>${getTotalExpenses().toFixed(2)}</Text>
+              </View>
+              <View style={[styles.statCard, {backgroundColor: '#dbeafe'}]}>
+                <Text style={styles.statTitle}>💳 Balance</Text>
+                <Text style={styles.statAmount}>${(getTotalIncome() - getTotalExpenses()).toFixed(2)}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.transactionsContainer}>
+              <Text style={styles.sectionTitle}>Recent Transactions</Text>
+              {transactions.map(transaction => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <View style={styles.transactionInfo}>
+                    <Text style={styles.transactionDescription}>{transaction.description}</Text>
+                    <Text style={styles.transactionDetails}>{transaction.category} • {transaction.date}</Text>
+                  </View>
+                  <Text style={[styles.transactionAmount, {color: transaction.type === 'income' ? '#16a34a' : '#dc2626'}]}>
+                    {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.formContainer}>
+            <Text style={styles.formTitle}>Add Transaction</Text>
+            
+            <View style={styles.typeContainer}>
+              <TouchableOpacity
+                style={[styles.typeButton, newTransaction.type === 'expense' && styles.expenseActive]}
+                onPress={() => setNewTransaction({...newTransaction, type: 'expense'})}
+              >
+                <Text style={styles.typeText}>💸 Expense</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeButton, newTransaction.type === 'income' && styles.incomeActive]}
+                onPress={() => setNewTransaction({...newTransaction, type: 'income'})}
+              >
+                <Text style={styles.typeText}>💰 Income</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Amount (e.g., 50.00)"
+              value={newTransaction.amount}
+              onChangeText={(text) => setNewTransaction({...newTransaction, amount: text})}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Category (e.g., Food, Transport)"
+              value={newTransaction.category}
+              onChangeText={(text) => setNewTransaction({...newTransaction, category: text})}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Description"
+              value={newTransaction.description}
+              onChangeText={(text) => setNewTransaction({...newTransaction, description: text})}
+            />
+
+            <TouchableOpacity style={styles.addButton} onPress={addTransaction}>
+              <Text style={styles.addButtonText}>Add Transaction</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'dashboard' && styles.activeTab]}
+          onPress={() => setActiveTab('dashboard')}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'dashboard' && styles.activeTabLabel]}>📊 Dashboard</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'add' && styles.activeTab]}
+          onPress={() => setActiveTab('add')}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'add' && styles.activeTabLabel]}>➕ Add</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { backgroundColor: '#4F46E5', padding: 20, paddingBottom: 30 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 5 },
+  headerSubtitle: { fontSize: 16, color: '#E0E7FF' },
+  content: { flex: 1, padding: 16 },
+  statsContainer: { marginBottom: 24 },
+  statCard: { padding: 16, borderRadius: 12, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statTitle: { fontSize: 18, fontWeight: '600' },
+  statAmount: { fontSize: 24, fontWeight: 'bold' },
+  transactionsContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: '#1f2937' },
+  transactionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#f9fafb', borderRadius: 8, marginBottom: 8 },
+  transactionInfo: { flex: 1 },
+  transactionDescription: { fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 },
+  transactionDetails: { fontSize: 14, color: '#6b7280' },
+  transactionAmount: { fontSize: 16, fontWeight: 'bold' },
+  formContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 20 },
+  formTitle: { fontSize: 20, fontWeight: '600', marginBottom: 20, color: '#1f2937' },
+  typeContainer: { flexDirection: 'row', marginBottom: 20, gap: 12 },
+  typeButton: { flex: 1, padding: 16, borderRadius: 8, borderWidth: 2, borderColor: '#e5e7eb', alignItems: 'center' },
+  typeText: { fontSize: 16, fontWeight: '600' },
+  expenseActive: { borderColor: '#dc2626', backgroundColor: '#fee2e2' },
+  incomeActive: { borderColor: '#16a34a', backgroundColor: '#dcfce7' },
+  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16, backgroundColor: '#fff' },
+  addButton: { backgroundColor: '#4F46E5', padding: 16, borderRadius: 8, alignItems: 'center' },
+  addButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
+  tabButton: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, marginHorizontal: 4, borderRadius: 8, backgroundColor: '#f5f5f5' },
+  activeTab: { backgroundColor: '#4F46E5' },
+  tabLabel: { fontSize: 14, color: '#666' },
+  activeTabLabel: { color: '#fff' }
+});
+
+export default App;
+

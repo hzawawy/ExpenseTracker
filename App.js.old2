@@ -1,0 +1,686 @@
+// Advanced Expense Tracker App - App.js
+import React, { useState, useEffect } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Modal,
+  FlatList,
+  Image,
+  Dimensions,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
+
+// For now, let's use a simpler approach without the library
+import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
+
+const { width } = Dimensions.get('window');
+
+const App = () => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions, setTransactions] = useState([]);
+  const [recurringIncome, setRecurringIncome] = useState([]);
+  const [scannedReceipts, setScannedReceipts] = useState([]);
+  const [startingBalance, setStartingBalance] = useState(0);
+  const [showStartingBalanceModal, setShowStartingBalanceModal] = useState(false);
+  const [balanceInput, setBalanceInput] = useState('');
+  
+  const [newTransaction, setNewTransaction] = useState({
+    amount: '', category: '', description: '', type: 'expense', isRecurring: false, frequency: 'monthly'
+  });
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [showReceiptsModal, setShowReceiptsModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
+
+  const categories = {
+    expense: ['Food', 'Transport', 'Shopping', 'Entertainment', 'Health', 'Bills', 'Other'],
+    income: ['Salary', 'Freelance', 'Investment', 'Business', 'Gift', 'Other']
+  };
+
+  const frequencies = ['daily', 'weekly', 'monthly', 'yearly'];
+
+  // Process recurring income
+  useEffect(() => {
+    const processRecurringIncome = () => {
+      const today = new Date().toISOString().split('T')[0];
+      
+      recurringIncome.forEach(recurring => {
+        const lastProcessed = recurring.lastProcessed || recurring.startDate;
+        const daysSinceProcessed = Math.floor((new Date(today) - new Date(lastProcessed)) / (1000 * 60 * 60 * 24));
+        
+        let shouldAdd = false;
+        switch (recurring.frequency) {
+          case 'daily': shouldAdd = daysSinceProcessed >= 1; break;
+          case 'weekly': shouldAdd = daysSinceProcessed >= 7; break;
+          case 'monthly': shouldAdd = daysSinceProcessed >= 30; break;
+          case 'yearly': shouldAdd = daysSinceProcessed >= 365; break;
+        }
+
+        if (shouldAdd) {
+          const newIncomeTransaction = {
+            id: Date.now() + Math.random(),
+            amount: recurring.amount,
+            category: recurring.category,
+            description: `${recurring.description} (Auto)`,
+            date: today,
+            type: 'income',
+            isRecurring: true
+          };
+          
+          setTransactions(prev => [...prev, newIncomeTransaction]);
+          
+          // Update last processed date
+          setRecurringIncome(prev => 
+            prev.map(r => r.id === recurring.id ? { ...r, lastProcessed: today } : r)
+          );
+        }
+      });
+    };
+
+    const interval = setInterval(processRecurringIncome, 24 * 60 * 60 * 1000); // Check daily
+    processRecurringIncome(); // Check immediately
+    
+    return () => clearInterval(interval);
+  }, [recurringIncome]);
+
+  const addTransaction = () => {
+    if (!newTransaction.amount || !newTransaction.category || !newTransaction.description) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (newTransaction.isRecurring && newTransaction.type === 'income') {
+      // Add to recurring income
+      const recurringItem = {
+        id: Date.now(),
+        amount: parseFloat(newTransaction.amount),
+        category: newTransaction.category,
+        description: newTransaction.description,
+        frequency: newTransaction.frequency,
+        startDate: new Date().toISOString().split('T')[0],
+        lastProcessed: null
+      };
+      setRecurringIncome(prev => [...prev, recurringItem]);
+      Alert.alert('Success', 'Recurring income added!');
+    } else {
+      // Add regular transaction
+      const transaction = {
+        id: Date.now(),
+        amount: parseFloat(newTransaction.amount),
+        category: newTransaction.category,
+        description: newTransaction.description,
+        date: new Date().toISOString().split('T')[0],
+        type: newTransaction.type,
+        isRecurring: false
+      };
+      setTransactions(prev => [...prev, transaction]);
+      Alert.alert('Success', 'Transaction added!');
+    }
+
+    setNewTransaction({ amount: '', category: '', description: '', type: 'expense', isRecurring: false, frequency: 'monthly' });
+  };
+
+  const deleteTransaction = (id) => {
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    setShowDeleteModal(false);
+    Alert.alert('Success', 'Transaction deleted!');
+  };
+
+  const deleteRecurring = (id) => {
+    setRecurringIncome(prev => prev.filter(r => r.id !== id));
+    Alert.alert('Success', 'Recurring income removed!');
+  };
+
+   const scanReceipt = () => {
+     Alert.alert(
+     'Scan Receipt',
+     'Choose scanning method',
+       [
+	 { text: 'Camera', onPress: () => mockScanReceipt('camera') },
+	 { text: 'Gallery', onPress: () => mockScanReceipt('gallery') },
+	 { text: 'Cancel', style: 'cancel' }
+       ]
+     );
+   };
+
+  const mockScanReceipt = (method) => {
+    // Mock OCR data until we get real camera working
+    const mockData = {
+      amount: (Math.random() * 100 + 10).toFixed(2),
+      category: categories.expense[Math.floor(Math.random() * categories.expense.length)],
+      description: `Scanned receipt (${method})`,
+      merchant: 'Local Store',
+      date: new Date().toISOString().split('T')[0]
+    };
+
+  const receipt = {
+    id: Date.now(),
+    image: 'https://via.placeholder.com/200x150/cccccc/666666?text=Receipt', // Placeholder image
+    extractedData: mockData,
+    scanDate: new Date().toISOString().split('T')[0]
+  };
+
+  setScannedReceipts(prev => [...prev, receipt]);
+  
+  // Pre-fill transaction form
+  setNewTransaction({
+    ...newTransaction,
+    amount: mockData.amount,
+    category: mockData.category,
+    description: mockData.description
+  });
+
+  setActiveTab('add');
+  Alert.alert('Receipt Scanned!', 'Mock data extracted and form pre-filled. Check the Add tab!');
+};
+
+  const openCamera = () => {
+    const options = { mediaType: 'photo', quality: 0.8 };
+    launchCamera(options, (response) => {
+      if (response.assets && response.assets[0]) {
+        processReceiptImage(response.assets[0]);
+      }
+    });
+  };
+
+  const openGallery = () => {
+    const options = { mediaType: 'photo', quality: 0.8 };
+    launchImageLibrary(options, (response) => {
+      if (response.assets && response.assets[0]) {
+        processReceiptImage(response.assets[0]);
+      }
+    });
+  };
+
+  const processReceiptImage = (imageAsset) => {
+    // Mock OCR processing - in real app, you'd use OCR service
+    const mockData = {
+      amount: (Math.random() * 100 + 10).toFixed(2),
+      category: categories.expense[Math.floor(Math.random() * categories.expense.length)],
+      description: 'Scanned receipt',
+      merchant: 'Store Name',
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    const receipt = {
+      id: Date.now(),
+      image: imageAsset.uri,
+      extractedData: mockData,
+      scanDate: new Date().toISOString().split('T')[0]
+    };
+
+    setScannedReceipts(prev => [...prev, receipt]);
+    
+    // Pre-fill transaction form
+    setNewTransaction({
+      ...newTransaction,
+      amount: mockData.amount,
+      category: mockData.category,
+      description: mockData.description
+    });
+
+    setActiveTab('add');
+    Alert.alert('Receipt Scanned', 'Data extracted and form pre-filled!');
+  };
+
+  const getTotalExpenses = () => transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const getTotalIncome = () => transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const getCurrentBalance = () => startingBalance + getTotalIncome() - getTotalExpenses();
+
+  const setInitialBalance = (balance) => {
+    setStartingBalance(parseFloat(balance) || 0);
+    setShowStartingBalanceModal(false);
+    Alert.alert('Success', `Starting balance set to ${parseFloat(balance).toFixed(2)}`);
+  };
+
+  const getExpensesByCategory = () => {
+    const expenses = transactions.filter(t => t.type === 'expense');
+    const categoryTotals = {};
+    expenses.forEach(expense => {
+      categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + expense.amount;
+    });
+    return Object.entries(categoryTotals).map(([category, amount]) => ({ category, amount }));
+  };
+
+  const renderPieChart = () => {
+    const data = getExpensesByCategory();
+    const total = data.reduce((sum, item) => sum + item.amount, 0);
+    const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384'];
+    
+    return (
+      <View style={styles.pieChartContainer}>
+        <Text style={styles.chartTitle}>Expenses by Category</Text>
+        {data.map((item, index) => {
+          const percentage = ((item.amount / total) * 100).toFixed(1);
+          return (
+            <View key={item.category} style={styles.chartItem}>
+              <View style={[styles.colorIndicator, { backgroundColor: colors[index % colors.length] }]} />
+              <Text style={styles.chartLabel}>{item.category}: ${item.amount.toFixed(2)} ({percentage}%)</Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderDashboard = () => (
+    <ScrollView>
+      <View style={styles.statsContainer}>
+        <View style={[styles.statCard, {backgroundColor: '#e0f2fe'}]}>
+          <View>
+            <Text style={styles.statTitle}>🏦 Starting Balance</Text>
+            <TouchableOpacity onPress={() => setShowStartingBalanceModal(true)}>
+              <Text style={styles.editBalanceText}>Tap to edit</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.statAmount}>${startingBalance.toFixed(2)}</Text>
+        </View>
+        <View style={[styles.statCard, {backgroundColor: '#dcfce7'}]}>
+          <Text style={styles.statTitle}>💰 Total Income</Text>
+          <Text style={styles.statAmount}>${getTotalIncome().toFixed(2)}</Text>
+        </View>
+        <View style={[styles.statCard, {backgroundColor: '#fee2e2'}]}>
+          <Text style={styles.statTitle}>💸 Total Expenses</Text>
+          <Text style={styles.statAmount}>${getTotalExpenses().toFixed(2)}</Text>
+        </View>
+        <View style={[styles.statCard, {backgroundColor: getCurrentBalance() >= 0 ? '#dbeafe' : '#fecaca'}]}>
+          <Text style={styles.statTitle}>💳 Current Balance</Text>
+          <Text style={[styles.statAmount, {color: getCurrentBalance() >= 0 ? '#1f2937' : '#dc2626'}]}>
+            ${getCurrentBalance().toFixed(2)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.actionButtonsContainer}>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setShowReportsModal(true)}>
+          <Text style={styles.actionButtonText}>📊 View Reports</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setShowReceiptsModal(true)}>
+          <Text style={styles.actionButtonText}>📄 Receipts ({scannedReceipts.length})</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.transactionsContainer}>
+        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        {transactions.length === 0 ? (
+          <Text style={styles.emptyText}>No transactions yet. Add your first transaction!</Text>
+        ) : (
+          transactions.slice(-10).reverse().map(transaction => (
+            <TouchableOpacity 
+              key={transaction.id} 
+              style={styles.transactionItem}
+              onLongPress={() => {
+                setSelectedTransaction(transaction);
+                setShowDeleteModal(true);
+              }}
+            >
+              <View style={styles.transactionInfo}>
+                <Text style={styles.transactionDescription}>{transaction.description}</Text>
+                <Text style={styles.transactionDetails}>{transaction.category} • {transaction.date}</Text>
+              </View>
+              <Text style={[styles.transactionAmount, {color: transaction.type === 'income' ? '#16a34a' : '#dc2626'}]}>
+                {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toFixed(2)}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
+      </View>
+
+      {recurringIncome.length > 0 && (
+        <View style={styles.recurringContainer}>
+          <Text style={styles.sectionTitle}>Recurring Income</Text>
+          {recurringIncome.map(recurring => (
+            <TouchableOpacity 
+              key={recurring.id} 
+              style={styles.recurringItem}
+              onLongPress={() => {
+                Alert.alert(
+                  'Delete Recurring Income',
+                  `Remove "${recurring.description}"?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', onPress: () => deleteRecurring(recurring.id), style: 'destructive' }
+                  ]
+                );
+              }}
+            >
+              <View>
+                <Text style={styles.recurringDescription}>{recurring.description}</Text>
+                <Text style={styles.recurringDetails}>{recurring.frequency} • ${recurring.amount.toFixed(2)}</Text>
+              </View>
+              <Text style={styles.recurringBadge}>🔄 Auto</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderAddTransaction = () => (
+    <ScrollView style={styles.formContainer}>
+      <Text style={styles.formTitle}>Add Transaction</Text>
+      
+      <TouchableOpacity style={styles.scanButton} onPress={scanReceipt}>
+        <Text style={styles.scanButtonText}>📷 Scan Receipt</Text>
+      </TouchableOpacity>
+      
+      <View style={styles.typeContainer}>
+        <TouchableOpacity
+          style={[styles.typeButton, newTransaction.type === 'expense' && styles.expenseActive]}
+          onPress={() => setNewTransaction({...newTransaction, type: 'expense', isRecurring: false})}
+        >
+          <Text style={styles.typeText}>💸 Expense</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeButton, newTransaction.type === 'income' && styles.incomeActive]}
+          onPress={() => setNewTransaction({...newTransaction, type: 'income'})}
+        >
+          <Text style={styles.typeText}>💰 Income</Text>
+        </TouchableOpacity>
+      </View>
+
+      {newTransaction.type === 'income' && (
+        <TouchableOpacity
+          style={[styles.recurringToggle, newTransaction.isRecurring && styles.recurringToggleActive]}
+          onPress={() => setNewTransaction({...newTransaction, isRecurring: !newTransaction.isRecurring})}
+        >
+          <Text style={styles.recurringToggleText}>
+            {newTransaction.isRecurring ? '🔄 Recurring Income' : '📅 One-time Income'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {newTransaction.isRecurring && newTransaction.type === 'income' && (
+        <View style={styles.frequencyContainer}>
+          <Text style={styles.label}>Frequency:</Text>
+          <View style={styles.frequencyButtons}>
+            {frequencies.map(freq => (
+              <TouchableOpacity
+                key={freq}
+                style={[styles.frequencyButton, newTransaction.frequency === freq && styles.frequencyButtonActive]}
+                onPress={() => setNewTransaction({...newTransaction, frequency: freq})}
+              >
+                <Text style={[styles.frequencyButtonText, newTransaction.frequency === freq && styles.frequencyButtonTextActive]}>
+                  {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      <TextInput
+        style={styles.input}
+        placeholder="Amount (e.g., 50.00)"
+        value={newTransaction.amount}
+        onChangeText={(text) => setNewTransaction({...newTransaction, amount: text})}
+        keyboardType="numeric"
+      />
+
+      <View style={styles.categoryContainer}>
+        <Text style={styles.label}>Category:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+          {categories[newTransaction.type].map(category => (
+            <TouchableOpacity
+              key={category}
+              style={[styles.categoryButton, newTransaction.category === category && styles.categoryButtonActive]}
+              onPress={() => setNewTransaction({...newTransaction, category})}
+            >
+              <Text style={[styles.categoryButtonText, newTransaction.category === category && styles.categoryButtonTextActive]}>
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Description"
+        value={newTransaction.description}
+        onChangeText={(text) => setNewTransaction({...newTransaction, description: text})}
+      />
+
+      <TouchableOpacity style={styles.addButton} onPress={addTransaction}>
+        <Text style={styles.addButtonText}>
+          {newTransaction.isRecurring ? 'Add Recurring Income' : 'Add Transaction'}
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#4F46E5" barStyle="light-content" />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>💳 Expense Tracker Pro</Text>
+        <Text style={styles.headerSubtitle}>Complete financial management</Text>
+      </View>
+
+      <View style={styles.content}>
+        {activeTab === 'dashboard' ? renderDashboard() : renderAddTransaction()}
+      </View>
+
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'dashboard' && styles.activeTab]}
+          onPress={() => setActiveTab('dashboard')}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'dashboard' && styles.activeTabLabel]}>📊 Dashboard</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'add' && styles.activeTab]}
+          onPress={() => setActiveTab('add')}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'add' && styles.activeTabLabel]}>➕ Add</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Starting Balance Modal */}
+      <Modal visible={showStartingBalanceModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Set Starting Balance</Text>
+            <Text style={styles.modalText}>
+              Enter your current account balance to start tracking from:
+            </Text>
+            <TextInput
+              style={styles.balanceInput}
+              placeholder="0.00"
+              value={balanceInput}
+              onChangeText={setBalanceInput}
+              keyboardType="numeric"
+              autoFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={styles.modalButton} 
+                onPress={() => {
+                  setShowStartingBalanceModal(false);
+                  setBalanceInput('');
+                }}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.confirmButton]} 
+                onPress={setInitialBalance}
+              >
+                <Text style={[styles.modalButtonText, styles.confirmButtonText]}>Set Balance</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Transaction</Text>
+            <Text style={styles.modalText}>
+              Are you sure you want to delete "{selectedTransaction?.description}"?
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButton} onPress={() => setShowDeleteModal(false)}>
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.deleteButton]} 
+                onPress={() => deleteTransaction(selectedTransaction?.id)}
+              >
+                <Text style={[styles.modalButtonText, styles.deleteButtonText]}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Receipts Modal */}
+      <Modal visible={showReceiptsModal} animationType="slide">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalHeaderTitle}>📄 Scanned Receipts</Text>
+            <TouchableOpacity onPress={() => setShowReceiptsModal(false)}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.receiptsContainer}>
+            {scannedReceipts.length === 0 ? (
+              <Text style={styles.emptyText}>No receipts scanned yet</Text>
+            ) : (
+              scannedReceipts.map(receipt => (
+                <View key={receipt.id} style={styles.receiptItem}>
+                  <Image source={{uri: receipt.image}} style={styles.receiptImage} />
+                  <View style={styles.receiptInfo}>
+                    <Text style={styles.receiptMerchant}>{receipt.extractedData.merchant}</Text>
+                    <Text style={styles.receiptAmount}>${receipt.extractedData.amount}</Text>
+                    <Text style={styles.receiptDate}>{receipt.scanDate}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Reports Modal */}
+      <Modal visible={showReportsModal} animationType="slide">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalHeaderTitle}>📊 Financial Reports</Text>
+            <TouchableOpacity onPress={() => setShowReportsModal(false)}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.reportsContainer}>
+            {renderPieChart()}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  header: { backgroundColor: '#4F46E5', padding: 20, paddingBottom: 30 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 5 },
+  headerSubtitle: { fontSize: 16, color: '#E0E7FF' },
+  content: { flex: 1, padding: 16 },
+  statsContainer: { marginBottom: 24 },
+  statCard: { padding: 16, borderRadius: 12, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statTitle: { fontSize: 18, fontWeight: '600' },
+  statAmount: { fontSize: 24, fontWeight: 'bold' },
+  actionButtonsContainer: { flexDirection: 'row', marginBottom: 24, gap: 12 },
+  actionButton: { flex: 1, backgroundColor: '#6366F1', padding: 12, borderRadius: 8, alignItems: 'center' },
+  actionButtonText: { color: '#fff', fontWeight: '600' },
+  transactionsContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16 },
+  recurringContainer: { backgroundColor: '#f0f9ff', borderRadius: 12, padding: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: '#1f2937' },
+  emptyText: { textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: 20 },
+  transactionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#f9fafb', borderRadius: 8, marginBottom: 8 },
+  transactionInfo: { flex: 1 },
+  transactionDescription: { fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 },
+  transactionDetails: { fontSize: 14, color: '#6b7280' },
+  transactionAmount: { fontSize: 16, fontWeight: 'bold' },
+  recurringItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#e0f2fe', borderRadius: 8, marginBottom: 8 },
+  recurringDescription: { fontSize: 16, fontWeight: '600', color: '#0369a1' },
+  recurringDetails: { fontSize: 14, color: '#0284c7' },
+  recurringBadge: { fontSize: 12, backgroundColor: '#0ea5e9', color: '#fff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  formContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 20 },
+  formTitle: { fontSize: 20, fontWeight: '600', marginBottom: 20, color: '#1f2937' },
+  scanButton: { backgroundColor: '#10b981', padding: 16, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
+  scanButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  typeContainer: { flexDirection: 'row', marginBottom: 20, gap: 12 },
+  typeButton: { flex: 1, padding: 16, borderRadius: 8, borderWidth: 2, borderColor: '#e5e7eb', alignItems: 'center' },
+  typeText: { fontSize: 16, fontWeight: '600' },
+  expenseActive: { borderColor: '#dc2626', backgroundColor: '#fee2e2' },
+  incomeActive: { borderColor: '#16a34a', backgroundColor: '#dcfce7' },
+  recurringToggle: { padding: 16, borderRadius: 8, borderWidth: 2, borderColor: '#e5e7eb', alignItems: 'center', marginBottom: 20 },
+  recurringToggleActive: { borderColor: '#0ea5e9', backgroundColor: '#e0f2fe' },
+  recurringToggleText: { fontSize: 16, fontWeight: '600' },
+  frequencyContainer: { marginBottom: 20 },
+  label: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#1f2937' },
+  frequencyButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  frequencyButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#d1d5db' },
+  frequencyButtonActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+  frequencyButtonText: { fontSize: 14, color: '#6b7280' },
+  frequencyButtonTextActive: { color: '#fff' },
+  categoryContainer: { marginBottom: 20 },
+  categoryScroll: { marginTop: 8 },
+  categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#d1d5db', marginRight: 8 },
+  categoryButtonActive: { backgroundColor: '#4f46e5', borderColor: '#4f46e5' },
+  categoryButtonText: { fontSize: 14, color: '#6b7280' },
+  categoryButtonTextActive: { color: '#fff' },
+  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16, backgroundColor: '#fff' },
+  addButton: { backgroundColor: '#4F46E5', padding: 16, borderRadius: 8, alignItems: 'center' },
+  addButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
+  tabButton: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, marginHorizontal: 4, borderRadius: 8, backgroundColor: '#f5f5f5' },
+  activeTab: { backgroundColor: '#4F46E5' },
+  tabLabel: { fontSize: 14, color: '#666' },
+  activeTabLabel: { color: '#fff' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', padding: 20, borderRadius: 12, margin: 20, minWidth: 300 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+  modalText: { fontSize: 16, marginBottom: 20, textAlign: 'center', color: '#6b7280' },
+  modalButtons: { flexDirection: 'row', gap: 12 },
+  modalButton: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#d1d5db' },
+  deleteButton: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  confirmButton: { backgroundColor: '#10b981', borderColor: '#10b981' },
+  modalButtonText: { fontSize: 16, fontWeight: '600', color: '#6b7280' },
+  deleteButtonText: { color: '#fff' },
+  confirmButtonText: { color: '#fff' },
+  balanceInput: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, padding: 12, fontSize: 18, marginBottom: 20, textAlign: 'center' },
+  editBalanceText: { fontSize: 12, color: '#6366f1', marginTop: 2 },
+  modalContainer: { flex: 1, backgroundColor: '#f8fafc' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#4F46E5' },
+  modalHeaderTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  closeButton: { fontSize: 24, color: '#fff', fontWeight: 'bold' },
+  receiptsContainer: { flex: 1, padding: 16 },
+  receiptItem: { flexDirection: 'row', backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 12 },
+  receiptImage: { width: 80, height: 80, borderRadius: 8, marginRight: 16 },
+  receiptInfo: { flex: 1 },
+  receiptMerchant: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
+  receiptAmount: { fontSize: 18, fontWeight: 'bold', color: '#dc2626', marginVertical: 4 },
+  receiptDate: { fontSize: 14, color: '#6b7280' },
+  reportsContainer: { flex: 1, padding: 16 },
+  pieChartContainer: { backgroundColor: '#fff', padding: 20, borderRadius: 12 },
+  chartTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, textAlign: 'center', color: '#1f2937' },
+  chartItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  colorIndicator: { width: 16, height: 16, borderRadius: 8, marginRight: 12 },
+  chartLabel: { fontSize: 14, color: '#4b5563' }
+});
+
+export default App;

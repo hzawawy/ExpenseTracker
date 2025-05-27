@@ -1,0 +1,114 @@
+import React, { useState } from 'react';
+import { Modal, SafeAreaView, View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { styles } from '../../styles/appStyles';
+
+const ReceiptDetailModal = ({ visible, onClose, onRequestClose, receipt }) => {
+    const [imageError, setImageError] = useState(false);
+
+    if (!receipt) return null;
+
+    // Add safety check for image URI
+    const hasValidImage = receipt.image && typeof receipt.image === 'string' && receipt.image.length > 0;
+
+    return (
+        <Modal visible={visible} animationType="slide" onRequestClose={onRequestClose}>
+            <SafeAreaView style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalHeaderTitle}>📄 Receipt Details</Text>
+                    <TouchableOpacity onPress={onClose}>
+                        <Text style={styles.closeButton}>✕</Text>
+                    </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.receiptDetailContainer}>
+                    <View style={styles.receiptImageContainer}>
+                        {hasValidImage && !imageError ? (
+                            <Image 
+                                source={{uri: receipt.image}} 
+                                style={styles.receiptDetailImage}
+                                onError={() => setImageError(true)}
+                            />
+                        ) : (
+                            <View style={[styles.receiptDetailImage, {backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center'}]}>
+                                <Text style={{color: '#666', textAlign: 'center'}}>
+                                    {imageError ? 'Failed to load image' : 'No image available'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                    
+                    {receipt.parsedData?.processingSteps?.length > 0 && (
+                        <View style={styles.receiptInfoSection}>
+                            <Text style={styles.sectionTitle}>⚙️ Processing Steps</Text>
+                            {receipt.parsedData.processingSteps.map((step, index) => (
+                                <Text key={index} style={styles.processingStep}>{step}</Text>
+                            ))}
+                        </View>
+                    )}
+                    
+                    <View style={styles.receiptInfoSection}>
+                        <Text style={styles.sectionTitle}>📋 Extracted Information</Text>
+                        <InfoRow label="Merchant" value={receipt.parsedData?.merchant || 'Unknown'} />
+                        <InfoRow label="Date" value={receipt.parsedData?.date || 'Not found'} />
+                        <InfoRow label="Total" value={`$${receipt.parsedData?.total?.toFixed(2) || '0.00'}`} />
+                        <InfoRow label="Subtotal" value={`$${receipt.parsedData?.subtotal?.toFixed(2) || '0.00'}`} />
+                        <InfoRow label="Tax" value={`$${receipt.parsedData?.tax?.toFixed(2) || '0.00'}`} />
+                        <InfoRow label="Items Found" value={receipt.parsedData?.items?.length || 0} />
+                    </View>
+
+                    {receipt.parsedData?.items?.length > 0 && (
+                        <View style={styles.receiptInfoSection}>
+                            <Text style={styles.sectionTitle}>🛒 Detected Items</Text>
+                            {receipt.parsedData.items.map((item, index) => (
+                                <DetectedItem key={item.id || index} item={item} />
+                            ))}
+                        </View>
+                    )}
+                    
+                    {receipt.parsedData?.potentialItems?.length > 0 && (
+                        <View style={styles.receiptInfoSection}>
+                            <Text style={styles.sectionTitle}>🔍 Potential Items</Text>
+                            <Text style={styles.potentialItemsNote}>Lines that might be items but didn't match patterns:</Text>
+                            {receipt.parsedData.potentialItems.slice(0, 10).map((item, index) => (
+                                <PotentialItem key={`${item.text}-${index}`} item={item} />
+                            ))}
+                        </View>
+                    )}
+                    
+                    <View style={styles.receiptInfoSection}>
+                        <Text style={styles.sectionTitle}>📝 Raw OCR Text</Text>
+                        <View style={styles.rawTextContainer}>
+                            <Text selectable style={styles.rawText}>{receipt.extractedText || 'No text extracted'}</Text>
+                        </View>
+                    </View>
+                </ScrollView>
+            </SafeAreaView>
+        </Modal>
+    );
+};
+
+const InfoRow = ({ label, value }) => (
+    <View style={styles.infoRow}>
+        <Text style={styles.infoLabel}>{label}:</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+    </View>
+);
+
+const DetectedItem = ({ item }) => (
+    <View style={styles.detectedItem}>
+        <View style={styles.itemDetailInfo}>
+            <Text style={styles.itemDetailDescription}>{item.description}</Text>
+            <Text style={styles.itemDetailCategory}>Category: {item.category}</Text>
+            <Text style={styles.itemDetailConfidence}>Confidence: {Math.round((item.confidence || 0) * 100)}%</Text>
+        </View>
+        <Text style={styles.itemDetailAmount}>${item.amount?.toFixed(2) || '0.00'}</Text>
+    </View>
+);
+
+const PotentialItem = ({ item }) => (
+    <View style={styles.potentialItem}>
+        <Text style={styles.potentialItemText}>Line {item.lineNumber}: {item.text}</Text>
+        <Text style={styles.potentialItemScore}>Score: {Math.round((item.score || 0) * 100)}%</Text>
+    </View>
+);
+
+export default ReceiptDetailModal;
