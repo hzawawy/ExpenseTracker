@@ -1,0 +1,131 @@
+// Updated AddTransaction.js with permissions handling
+import React from 'react';
+import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useColors } from '../styles/colors';
+import { CATEGORIES, FREQUENCIES } from '../constants';
+import { requestAllPermissions, checkPermissions } from '../utils/permissions'; // Add this import
+
+const AddTransaction = ({
+  newTransaction,
+  setNewTransaction,
+  addTransaction,
+  scanReceipt,
+  isProcessingReceipt,
+  ocrSettings,
+}) => {
+  const colors = useColors();
+  
+  // Handle receipt scanning with permission check
+  const handleScanReceipt = async () => {
+    try {
+      // Check if permissions are already granted
+      const hasPermissions = await checkPermissions();
+      
+      if (!hasPermissions) {
+        // Request permissions
+        const granted = await requestAllPermissions();
+        if (!granted) {
+          Alert.alert(
+            'Permissions Required',
+            'Camera and storage permissions are required to scan receipts. Please enable them in your device settings.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+      }
+      
+      // Proceed with scanning
+      scanReceipt();
+    } catch (error) {
+      console.error('Permission error:', error);
+      Alert.alert(
+        'Error',
+        'Unable to request permissions. Please check your device settings.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const themedStyles = StyleSheet.create({
+    formContainer: {
+      backgroundColor: colors.background,
+      padding: 16,
+    },
+    formTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: colors.text,
+      marginBottom: 20,
+      textAlign: 'center',
+    },
+    scanButton: {
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 8,
+      marginBottom: 16,
+      alignItems: 'center',
+    },
+    scanButtonDisabled: {
+      backgroundColor: colors.textTertiary,
+    },
+    scanButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    processingIndicator: {
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 8,
+      marginBottom: 16,
+      borderColor: colors.border,
+      borderWidth: 1,
+    },
+    processingText: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: 'bold',
+      textAlign: 'center',
+    },
+    processingSubtext: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    // ... rest of your existing styles
+  });
+
+  return (
+    <ScrollView style={themedStyles.formContainer}>
+      <Text style={themedStyles.formTitle}>Add Transaction</Text>
+      
+      <TouchableOpacity 
+        style={[themedStyles.scanButton, isProcessingReceipt && themedStyles.scanButtonDisabled]} 
+        onPress={handleScanReceipt} // Changed from scanReceipt to handleScanReceipt
+        disabled={isProcessingReceipt}
+      >
+        <Text style={themedStyles.scanButtonText}>
+          {isProcessingReceipt ? '🔄 Processing...' : '📷 Scan Receipt'}
+        </Text>
+      </TouchableOpacity>
+
+      {isProcessingReceipt && (
+        <View style={themedStyles.processingIndicator}>
+          <Text style={themedStyles.processingText}>🤖 Analyzing receipt...</Text>
+          <Text style={themedStyles.processingSubtext}>
+            {ocrSettings.multipleAttempts ? 'Multiple attempts enabled' : 'Single attempt mode'}
+          </Text>
+          <Text style={themedStyles.processingSubtext}>
+            Advanced parsing: {ocrSettings.parseMode === 'advanced' ? 'ON' : 'OFF'}
+          </Text>
+        </View>
+      )}
+      
+      {/* Rest of your existing form components */}
+      {/* ... */}
+    </ScrollView>
+  );
+};
+
+export default AddTransaction;

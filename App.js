@@ -20,6 +20,7 @@ import MultipleItemsModal from './src/components/modals/MultipleItemsModal';
 const App = () => {
   const logic = useAppLogic();
 
+  // Check permissions on app startup
   if (logic.isLoading) {
     return (
       <SafeAreaView style={[styles.container, {justifyContent: 'center', alignItems: 'center'}]}>
