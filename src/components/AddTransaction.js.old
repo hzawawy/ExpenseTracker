@@ -1,8 +1,7 @@
 import React from 'react';
-import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useColors } from '../styles/colors';
+import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { useColors } from '../styles/colors'; // Add this import
 import { CATEGORIES, FREQUENCIES } from '../constants';
-import { ensureReceiptScanPermissions } from '../utils/permissions';
 
 const AddTransaction = ({
   newTransaction,
@@ -12,37 +11,9 @@ const AddTransaction = ({
   isProcessingReceipt,
   ocrSettings,
 }) => {
-  const colors = useColors();
+  const colors = useColors(); // Add this hook
   
-  // Handle receipt scanning with permission check
-  const handleScanReceipt = async () => {
-    try {
-      console.log('Scan receipt button pressed');
-      
-      const hasPermissions = await ensureReceiptScanPermissions();
-      
-      if (!hasPermissions) {
-        console.log('Permissions not granted, cannot scan');
-        Alert.alert(
-          'Permissions Required',
-          'Camera and storage permissions are required to scan receipts. Please enable them in your device settings.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
-      console.log('Permissions granted, starting scan');
-      scanReceipt();
-    } catch (error) {
-      console.error('Permission error:', error);
-      Alert.alert(
-        'Error',
-        'Unable to access camera. Please check your device settings.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
+  // Create themed styles
   const themedStyles = StyleSheet.create({
     formContainer: {
       backgroundColor: colors.background,
@@ -135,9 +106,6 @@ const AddTransaction = ({
       fontWeight: 'bold',
       color: colors.text,
     },
-    recurringToggleTextActive: {
-      color: '#FFFFFF',
-    },
     frequencyContainer: {
       marginBottom: 16,
     },
@@ -158,8 +126,6 @@ const AddTransaction = ({
       backgroundColor: colors.surface,
       borderColor: colors.border,
       borderWidth: 1,
-      minWidth: 80,
-      alignItems: 'center',
     },
     frequencyButtonActive: {
       backgroundColor: colors.primary,
@@ -168,7 +134,6 @@ const AddTransaction = ({
     frequencyButtonText: {
       color: colors.text,
       fontSize: 14,
-      fontWeight: '500',
     },
     frequencyButtonTextActive: {
       color: '#FFFFFF',
@@ -196,8 +161,6 @@ const AddTransaction = ({
       backgroundColor: colors.surface,
       borderColor: colors.border,
       borderWidth: 1,
-      minWidth: 80,
-      alignItems: 'center',
     },
     categoryButtonActive: {
       backgroundColor: colors.primary,
@@ -230,7 +193,7 @@ const AddTransaction = ({
       
       <TouchableOpacity 
         style={[themedStyles.scanButton, isProcessingReceipt && themedStyles.scanButtonDisabled]} 
-        onPress={handleScanReceipt}
+        onPress={scanReceipt}
         disabled={isProcessingReceipt}
       >
         <Text style={themedStyles.scanButtonText}>
@@ -255,42 +218,27 @@ const AddTransaction = ({
           style={[themedStyles.typeButton, newTransaction.type === 'expense' && themedStyles.expenseActive]}
           onPress={() => setNewTransaction({...newTransaction, type: 'expense', isRecurring: false})}
         >
-          <Text style={[themedStyles.typeText, newTransaction.type === 'expense' && {color: '#FFFFFF'}]}>
-            💸 Expense
-          </Text>
+          <Text style={themedStyles.typeText}>💸 Expense</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[themedStyles.typeButton, newTransaction.type === 'income' && themedStyles.incomeActive]}
           onPress={() => setNewTransaction({...newTransaction, type: 'income'})}
         >
-          <Text style={[themedStyles.typeText, newTransaction.type === 'income' && {color: '#FFFFFF'}]}>
-            💰 Income
-          </Text>
+          <Text style={themedStyles.typeText}>💰 Income</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Recurring Toggle - Only show for income */}
       {newTransaction.type === 'income' && (
         <TouchableOpacity
-          style={[
-            themedStyles.recurringToggle, 
-            newTransaction.isRecurring && themedStyles.recurringToggleActive
-          ]}
-          onPress={() => setNewTransaction({
-            ...newTransaction, 
-            isRecurring: !newTransaction.isRecurring
-          })}
+          style={[themedStyles.recurringToggle, newTransaction.isRecurring && themedStyles.recurringToggleActive]}
+          onPress={() => setNewTransaction({...newTransaction, isRecurring: !newTransaction.isRecurring})}
         >
-          <Text style={[
-            themedStyles.recurringToggleText,
-            newTransaction.isRecurring && themedStyles.recurringToggleTextActive
-          ]}>
+          <Text style={themedStyles.recurringToggleText}>
             {newTransaction.isRecurring ? '🔄 Recurring Income' : '📅 One-time Income'}
           </Text>
         </TouchableOpacity>
       )}
 
-      {/* Frequency Selection - Only show for recurring income */}
       {newTransaction.isRecurring && newTransaction.type === 'income' && (
         <View style={themedStyles.frequencyContainer}>
           <Text style={themedStyles.label}>Frequency:</Text>
@@ -298,16 +246,10 @@ const AddTransaction = ({
             {FREQUENCIES.map(freq => (
               <TouchableOpacity
                 key={freq}
-                style={[
-                  themedStyles.frequencyButton, 
-                  newTransaction.frequency === freq && themedStyles.frequencyButtonActive
-                ]}
+                style={[themedStyles.frequencyButton, newTransaction.frequency === freq && themedStyles.frequencyButtonActive]}
                 onPress={() => setNewTransaction({...newTransaction, frequency: freq})}
               >
-                <Text style={[
-                  themedStyles.frequencyButtonText, 
-                  newTransaction.frequency === freq && themedStyles.frequencyButtonTextActive
-                ]}>
+                <Text style={[themedStyles.frequencyButtonText, newTransaction.frequency === freq && themedStyles.frequencyButtonTextActive]}>
                   {freq.charAt(0).toUpperCase() + freq.slice(1)}
                 </Text>
               </TouchableOpacity>
@@ -325,23 +267,16 @@ const AddTransaction = ({
         keyboardType="numeric"
       />
 
-      {/* Category Selection */}
       <View style={themedStyles.categoryContainer}>
         <Text style={themedStyles.label}>Category:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={themedStyles.categoryScroll}>
           {CATEGORIES[newTransaction.type].map(category => (
             <TouchableOpacity
               key={category}
-              style={[
-                themedStyles.categoryButton, 
-                newTransaction.category === category && themedStyles.categoryButtonActive
-              ]}
+              style={[themedStyles.categoryButton, newTransaction.category === category && themedStyles.categoryButtonActive]}
               onPress={() => setNewTransaction({...newTransaction, category})}
             >
-              <Text style={[
-                themedStyles.categoryButtonText, 
-                newTransaction.category === category && themedStyles.categoryButtonTextActive
-              ]}>
+              <Text style={[themedStyles.categoryButtonText, newTransaction.category === category && themedStyles.categoryButtonTextActive]}>
                 {category}
               </Text>
             </TouchableOpacity>

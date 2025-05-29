@@ -1,5 +1,5 @@
-// src/utils/permissions.js - Create this new file
-import { PermissionsAndroid, Platform, Alert } from 'react-native';
+// src/utils/permissions.js - Native React Native permissions only
+import { PermissionsAndroid, Platform, Alert, Linking } from 'react-native';
 
 export const requestCameraPermission = async () => {
   if (Platform.OS === 'ios') {
@@ -11,15 +11,21 @@ export const requestCameraPermission = async () => {
     const granted = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.CAMERA,
       {
-        title: 'Camera Permission',
-        message: 'ExpenseTracker needs camera access to scan receipts',
+        title: 'Camera Permission Required',
+        message: 'ExpenseTracker needs access to your camera to scan receipts',
         buttonNeutral: 'Ask Me Later',
         buttonNegative: 'Cancel',
-        buttonPositive: 'OK',
+        buttonPositive: 'Grant Permission',
       }
     );
 
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
+    if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+      console.log('Camera permission granted');
+      return true;
+    } else {
+      console.log('Camera permission denied');
+      return false;
+    }
   } catch (err) {
     console.warn('Camera permission error:', err);
     return false;
@@ -33,31 +39,33 @@ export const requestStoragePermissions = async () => {
   }
 
   try {
-    // For Android 13+ (API level 33+), we need different permissions
+    // Check Android version to determine which permissions to request
     const androidVersion = Platform.Version;
     
     if (androidVersion >= 33) {
-      // Android 13+ uses scoped storage, request media permissions
-      const permissions = [
+      // Android 13+ (API level 33+) - Request media permissions
+      const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-      ];
-      
-      const results = await PermissionsAndroid.requestMultiple(permissions);
-      
-      return Object.values(results).every(
-        result => result === PermissionsAndroid.RESULTS.GRANTED
+        {
+          title: 'Media Access Permission',
+          message: 'ExpenseTracker needs access to save and read receipt images',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'Grant Permission',
+        }
       );
+      
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
     } else {
-      // Android 12 and below
-      const permissions = [
+      // Android 12 and below - Request storage permissions
+      const results = await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
         PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-      ];
-
-      const results = await PermissionsAndroid.requestMultiple(permissions);
+      ]);
       
-      return Object.values(results).every(
-        result => result === PermissionsAndroid.RESULTS.GRANTED
+      return (
+        results[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED &&
+        results[PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE] === PermissionsAndroid.RESULTS.GRANTED
       );
     }
   } catch (err) {
@@ -66,21 +74,85 @@ export const requestStoragePermissions = async () => {
   }
 };
 
+export const checkCameraPermission = async () => {
+  if (Platform.OS === 'ios') {
+    return true; // iOS handles this differently
+  }
+
+  try {
+    const hasPermission = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.CAMERA
+    );
+    return hasPermission;
+  } catch (error) {
+    console.error('Camera permission check failed:', error);
+    return false;
+  }
+};
+
+export const checkStoragePermissions = async () => {
+  if (Platform.OS === 'ios') {
+    return true;
+  }
+
+  try {
+    const androidVersion = Platform.Version;
+    
+    if (androidVersion >= 33) {
+      const hasPermission = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
+      );
+      return hasPermission;
+    } else {
+      const hasReadPermission = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
+      );
+      const hasWritePermission = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+      );
+      return hasReadPermission && hasWritePermission;
+    }
+  } catch (error) {
+    console.error('Storage permission check failed:', error);
+    return false;
+  }
+};
+
 export const requestAllPermissions = async () => {
   try {
+    console.log('Requesting camera permission...');
     const cameraGranted = await requestCameraPermission();
+    
+    console.log('Requesting storage permissions...');
     const storageGranted = await requestStoragePermissions();
 
-    if (!cameraGranted || !storageGranted) {
+    console.log(`Permissions - Camera: ${cameraGranted}, Storage: ${storageGranted}`);
+
+    if (!cameraGranted) {
       Alert.alert(
-        'Permissions Required',
-        'Camera and storage permissions are needed for receipt scanning. Please grant them in Settings.',
+        'Camera Permission Required',
+        'Camera access is needed to scan receipts. Please enable it in your device settings.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => {
-            // You can add code to open app settings here
-            console.log('Open app settings');
-          }},
+          { 
+            text: 'Open Settings', 
+            onPress: () => Linking.openSettings()
+          },
+        ]
+      );
+      return false;
+    }
+
+    if (!storageGranted) {
+      Alert.alert(
+        'Storage Permission Required',
+        'Storage access is needed to save receipt images. Please enable it in your device settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Open Settings', 
+            onPress: () => Linking.openSettings()
+          },
         ]
       );
       return false;
@@ -89,34 +161,44 @@ export const requestAllPermissions = async () => {
     return true;
   } catch (error) {
     console.error('Permission request failed:', error);
+    Alert.alert(
+      'Permission Error',
+      'Unable to request permissions. Please check your device settings manually.',
+      [{ text: 'OK' }]
+    );
     return false;
   }
 };
 
-export const checkPermissions = async () => {
-  if (Platform.OS === 'ios') {
-    return true; // iOS handles permissions differently
-  }
-
+export const checkAllPermissions = async () => {
   try {
-    const cameraPermission = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.CAMERA
-    );
-
-    let storagePermission;
-    if (Platform.Version >= 33) {
-      storagePermission = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
-      );
-    } else {
-      storagePermission = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
-      );
-    }
-
-    return cameraPermission && storagePermission;
+    const cameraGranted = await checkCameraPermission();
+    const storageGranted = await checkStoragePermissions();
+    
+    console.log(`Current permissions - Camera: ${cameraGranted}, Storage: ${storageGranted}`);
+    
+    return cameraGranted && storageGranted;
   } catch (error) {
     console.error('Permission check failed:', error);
+    return false;
+  }
+};
+
+// Helper function for receipt scanning
+export const ensureReceiptScanPermissions = async () => {
+  try {
+    // First check if we already have permissions
+    const hasPermissions = await checkAllPermissions();
+    
+    if (hasPermissions) {
+      return true;
+    }
+    
+    // If not, request them
+    console.log('Permissions not found, requesting...');
+    return await requestAllPermissions();
+  } catch (error) {
+    console.error('Error ensuring permissions:', error);
     return false;
   }
 };
