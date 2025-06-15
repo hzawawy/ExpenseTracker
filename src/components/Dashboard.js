@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
-import { useColors } from '../styles/colors'; // Add this import
+import { useColors } from '../styles/colors';
 import { getTotalIncome, getTotalExpenses, getCurrentBalance, getExpensesByCategory } from '../utils/transactionUtils';
 
 const Dashboard = ({
@@ -13,17 +13,20 @@ const Dashboard = ({
   setShowDeleteModal,
   setSelectedTransaction,
   deleteRecurring,
-  setShowStartingBalanceModal
+  setShowStartingBalanceModal,
+  setShowModelDownloaderModal // NEW: Added for AI model management
 }) => {
   const [transactionView, setTransactionView] = useState('recent');
-  const colors = useColors(); // Add this hook
+  const colors = useColors();
 
   const totalIncome = getTotalIncome(transactions);
   const totalExpenses = getTotalExpenses(transactions);
   const currentBalance = getCurrentBalance(startingBalance, totalIncome, totalExpenses);
   const expensesByCategory = getExpensesByCategory(transactions);
 
-  // Create themed styles
+  // NEW: Count receipts processed with enhanced parsing
+  const enhancedReceipts = scannedReceipts.filter(receipt => receipt.enhancedParsing).length;
+
   const themedStyles = StyleSheet.create({
     statsContainer: {
       padding: 16,
@@ -39,10 +42,10 @@ const Dashboard = ({
       backgroundColor: colors.surface,
     },
     statCardIncome: {
-      backgroundColor: colors.success + '20', // 20% opacity
+      backgroundColor: colors.success + '20',
     },
     statCardExpense: {
-      backgroundColor: colors.error + '20', // 20% opacity
+      backgroundColor: colors.error + '20',
     },
     statCardCurrentBalance: {
       backgroundColor: currentBalance >= 0 ? colors.success + '20' : colors.error + '20',
@@ -78,6 +81,10 @@ const Dashboard = ({
       borderRadius: 8,
       marginHorizontal: 4,
       alignItems: 'center',
+    },
+    // NEW: Special styling for AI button
+    aiButton: {
+      backgroundColor: colors.warning,
     },
     actionButtonText: {
       color: '#FFFFFF',
@@ -242,10 +249,19 @@ const Dashboard = ({
       
       <View style={themedStyles.actionButtonsContainer}>
         <TouchableOpacity style={themedStyles.actionButton} onPress={() => setShowReportsModal(true)}>
-          <Text style={themedStyles.actionButtonText}>📊 View Reports</Text>
+          <Text style={themedStyles.actionButtonText}>📊 Reports</Text>
         </TouchableOpacity>
         <TouchableOpacity style={themedStyles.actionButton} onPress={() => setShowReceiptsModal(true)}>
           <Text style={themedStyles.actionButtonText}>📄 Receipts ({scannedReceipts.length})</Text>
+        </TouchableOpacity>
+        {/* NEW: AI Model Management Button */}
+        <TouchableOpacity 
+          style={[themedStyles.actionButton, themedStyles.aiButton]} 
+          onPress={() => setShowModelDownloaderModal(true)}
+        >
+          <Text style={themedStyles.actionButtonText}>
+            🤖 AI {enhancedReceipts > 0 ? `(${enhancedReceipts})` : ''}
+          </Text>
         </TouchableOpacity>
       </View>
       
@@ -286,6 +302,10 @@ const Dashboard = ({
                   <View style={themedStyles.transactionInfo}>
                     <Text style={themedStyles.transactionDescription}>
                       {transaction.description}
+                      {/* NEW: Show AI indicator for transactions from enhanced receipts */}
+                      {transaction.originatingReceiptId && 
+                       scannedReceipts.find(r => r.id === transaction.originatingReceiptId)?.enhancedParsing && 
+                       ' 🤖'}
                     </Text>
                     <Text style={themedStyles.transactionDetails}>
                       {transaction.category} • {transaction.date}

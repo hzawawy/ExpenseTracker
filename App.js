@@ -16,6 +16,7 @@ import ReceiptsModal from './src/components/modals/ReceiptsModal';
 import ReceiptDetailModal from './src/components/modals/ReceiptDetailModal';
 import OcrSettingsModal from './src/components/modals/OcrSettingsModal';
 import MultipleItemsModal from './src/components/modals/MultipleItemsModal';
+import ModelDownloaderModal from './src/components/modals/ModelDownloaderModal'; // NEW
 
 const App = () => {
   const logic = useAppLogic();
@@ -48,6 +49,8 @@ const App = () => {
             setSelectedTransaction={logic.setSelectedTransaction}
             deleteRecurring={logic.deleteRecurring}
             setShowStartingBalanceModal={logic.setShowStartingBalanceModal}
+            // NEW: Pass model downloader state
+            setShowModelDownloaderModal={logic.setShowModelDownloaderModal}
           />
         ) : (
           <AddTransaction
@@ -63,7 +66,7 @@ const App = () => {
 
       <TabNavigator activeTab={logic.activeTab} setActiveTab={logic.setActiveTab} />
 
-      {/* --- Modals --- */}
+      {/* --- Existing Modals --- */}
       <StartingBalanceModal
         visible={logic.showStartingBalanceModal}
         onClose={() => logic.setShowStartingBalanceModal(false)}
@@ -121,6 +124,16 @@ const App = () => {
         extractedItems={logic.extractedItems}
         setExtractedItems={logic.setExtractedItems}
         onConfirm={(selectedItems) => logic.addMultipleTransactions(selectedItems, logic.currentReceiptIdForMultiAdd)}
+      />
+
+      {/* NEW: Model Downloader Modal */}
+      <ModelDownloaderModal
+        visible={logic.showModelDownloaderModal}
+        onClose={() => logic.setShowModelDownloaderModal(false)}
+        onDownloadComplete={() => {
+          logic.setShowModelDownloaderModal(false);
+          logic.setUseEnhancedParsing(true);
+        }}
       />
 
     </SafeAreaView>

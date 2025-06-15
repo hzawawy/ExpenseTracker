@@ -22,9 +22,12 @@
     "react-native-permissions": "^5.4.0",
     "react-native-picker-select": "^9.3.1",
     "react-native-svg": "^15.12.0",
-    "react-native-vector-icons": "^10.2.0"
+    "react-native-vector-icons": "^10.2.0",
+    "llama.rn": "^0.3.0",
+    "expo-file-system": "^15.4.5"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",

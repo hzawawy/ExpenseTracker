@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react'; // Add useCallback
-import { Alert, BackHandler, Platform } from 'react-native'; // Add Platform
+import React, { useState, useEffect, useCallback } from 'react';
+import { Alert, BackHandler, Platform } from 'react-native';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import ImageResizer from 'react-native-image-resizer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requestAppPermissions } from '../services/permissionService'; // Import the new function
-import { performEnhancedMLKitOCR, parseReceiptAdvanced } from '../services/ocrService';
+import { requestAppPermissions } from '../services/permissionService';
+import { performEnhancedMLKitOCR, parseReceiptAdvanced, parseReceiptWithMistralAI } from '../services/ocrService'; // NEW: Added parseReceiptWithMistralAI
+import * as FileSystem from 'expo-file-system'; // NEW: Added for model checking
 
 const STORAGE_KEYS = {
     TRANSACTIONS: 'transactions_v1',
@@ -12,6 +13,7 @@ const STORAGE_KEYS = {
     SCANNED_RECEIPTS: 'scannedReceipts_v1',
     STARTING_BALANCE: 'startingBalance_v1',
     OCR_SETTINGS: 'ocrSettings_v1',
+    USE_ENHANCED_PARSING: 'useEnhancedParsing_v1', // NEW: Store user preference
 };
 
 const DEFAULT_OCR_SETTINGS = {
@@ -30,7 +32,7 @@ export const useAppLogic = () => {
 
     // States for UI and app flow
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [isLoading, setIsLoading] = useState(true); // Start true
+    const [isLoading, setIsLoading] = useState(true);
     const [showStartingBalanceModal, setShowStartingBalanceModal] = useState(false);
     const [balanceInput, setBalanceInput] = useState('');
     const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
@@ -48,31 +50,31 @@ export const useAppLogic = () => {
     const [extractedItems, setExtractedItems] = useState([]);
     const [ocrDebugInfo, setOcrDebugInfo] = useState(null);
     const [currentReceiptIdForMultiAdd, setCurrentReceiptIdForMultiAdd] = useState(null);
-    const [hasCriticalPermissions, setHasCriticalPermissions] = useState(false); // New state for overall app permissions
+    const [hasCriticalPermissions, setHasCriticalPermissions] = useState(false);
+    
+    // NEW: Mistral AI related states
+    const [showModelDownloaderModal, setShowModelDownloaderModal] = useState(false);
+    const [useEnhancedParsing, setUseEnhancedParsing] = useState(false);
 
     // Effect for loading data on app start
     useEffect(() => {
         const loadData = async () => {
             console.log('[AppLogic] Mount: Starting data load...');
-            setIsLoading(true); // Ensure loading is true at start
+            setIsLoading(true);
 
-            // --- Step 1: Request Permissions ---
+            // Step 1: Request Permissions
             const granted = await requestAppPermissions();
-            setHasCriticalPermissions(granted); // Update permission state
+            setHasCriticalPermissions(granted);
 
             if (!granted) {
                 console.warn('[AppLogic] Permissions not granted. App functionality may be limited.');
-                // Optionally, if permissions are absolutely critical for showing *anything*
-                // you might prevent full app load or show a dedicated "permissions needed" screen.
-                // For now, we'll still attempt to load data that doesn't strictly depend on external storage,
-                // but features like scanning receipts will be blocked.
-                setIsLoading(false); // Finish loading even if permissions aren't granted to show UI
-                return; // Stop loading data if permissions are not granted to prevent errors
+                setIsLoading(false);
+                return;
             }
 
-            // --- Step 2: Load Data (only if permissions are granted or not critical) ---
+            // Step 2: Load Data
             try {
-                // Transactions
+                // Load existing data (transactions, receipts, etc.)
                 try {
                     const storedTransactions = await AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
                     setTransactions(storedTransactions ? JSON.parse(storedTransactions) : []);
@@ -82,7 +84,6 @@ export const useAppLogic = () => {
                     setTransactions([]);
                 }
 
-                // Recurring Income
                 try {
                     const storedRecurringIncome = await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_INCOME);
                     setRecurringIncome(storedRecurringIncome ? JSON.parse(storedRecurringIncome) : []);
@@ -92,7 +93,6 @@ export const useAppLogic = () => {
                     setRecurringIncome([]);
                 }
 
-                // Scanned Receipts
                 try {
                     const storedScannedReceipts = await AsyncStorage.getItem(STORAGE_KEYS.SCANNED_RECEIPTS);
                     setScannedReceipts(storedScannedReceipts ? JSON.parse(storedScannedReceipts) : []);
@@ -102,7 +102,6 @@ export const useAppLogic = () => {
                     setScannedReceipts([]);
                 }
 
-                // Starting Balance
                 try {
                     const storedStartingBalance = await AsyncStorage.getItem(STORAGE_KEYS.STARTING_BALANCE);
                     const parsedBalance = parseFloat(storedStartingBalance);
@@ -113,7 +112,6 @@ export const useAppLogic = () => {
                     setStartingBalance(0);
                 }
 
-                // OCR Settings
                 try {
                     const storedOcrSettings = await AsyncStorage.getItem(STORAGE_KEYS.OCR_SETTINGS);
                     setOcrSettings(storedOcrSettings ? JSON.parse(storedOcrSettings) : DEFAULT_OCR_SETTINGS);
@@ -123,19 +121,34 @@ export const useAppLogic = () => {
                     setOcrSettings(DEFAULT_OCR_SETTINGS);
                 }
 
+                // NEW: Load enhanced parsing preference and check model availability
+                try {
+                    const storedUseEnhanced = await AsyncStorage.getItem(STORAGE_KEYS.USE_ENHANCED_PARSING);
+                    const modelPath = `${FileSystem.documentDirectory}ministral-3b-instruct-q4_k_m.gguf`;
+                    const modelExists = await FileSystem.getInfoAsync(modelPath);
+                    
+                    // Only enable enhanced parsing if model exists AND user previously enabled it
+                    const shouldUseEnhanced = storedUseEnhanced === 'true' && modelExists.exists;
+                    setUseEnhancedParsing(shouldUseEnhanced);
+                    console.log(`[AppLogic] Load: Enhanced parsing - ${shouldUseEnhanced ? 'Enabled' : 'Disabled'} (Model exists: ${modelExists.exists})`);
+                } catch (e) {
+                    console.error(`[AppLogic] Load Error (USE_ENHANCED_PARSING): ${e.message}. Resetting.`);
+                    setUseEnhancedParsing(false);
+                }
+
             } catch (e) {
                 console.error("[AppLogic] Critical error during overall data loading sequence", e);
                 Alert.alert("Critical Error Loading Data", "There was a major problem loading app data. Using default values. Please report this.");
-                setTransactions([]); setRecurringIncome([]); setScannedReceipts([]); setStartingBalance(0); setOcrSettings(DEFAULT_OCR_SETTINGS);
+                setTransactions([]); setRecurringIncome([]); setScannedReceipts([]); setStartingBalance(0); setOcrSettings(DEFAULT_OCR_SETTINGS); setUseEnhancedParsing(false);
             } finally {
                 setIsLoading(false);
                 console.log('[AppLogic] Mount: Data loading finished. isLoading: false');
             }
         };
         loadData();
-    }, []); // Empty dependency array means this runs once on mount
+    }, []);
 
-    // --- Data Saving Effects (Guarded by isLoading) ---
+    // Data Saving Effects (existing + new)
     useEffect(() => {
         if (!isLoading) {
             AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions))
@@ -171,10 +184,18 @@ export const useAppLogic = () => {
         }
     }, [ocrSettings, isLoading]);
 
-    // --- BackHandler Effect ---
+    // NEW: Save enhanced parsing preference
+    useEffect(() => {
+        if (!isLoading) {
+            AsyncStorage.setItem(STORAGE_KEYS.USE_ENHANCED_PARSING, useEnhancedParsing.toString())
+                .catch(e => console.error("[AppLogic] Save Error (USE_ENHANCED_PARSING):", e.message));
+        }
+    }, [useEnhancedParsing, isLoading]);
+
+    // BackHandler Effect
     useEffect(() => {
         const backAction = () => {
-            if (isLoading) return true; // Prevent back action during initial load
+            if (isLoading) return true;
             if (activeTab !== 'dashboard') {
                 setActiveTab('dashboard');
                 return true;
@@ -183,11 +204,10 @@ export const useAppLogic = () => {
         };
         const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
         return () => backHandler.remove();
-    }, [activeTab, isLoading]); // Add isLoading as a dependency
+    }, [activeTab, isLoading]);
 
-    // --- Core Logic Functions ---
-
-    const addTransaction = useCallback(() => { // Wrap in useCallback
+    // Core Logic Functions (existing)
+    const addTransaction = useCallback(() => {
         if (!newTransaction.amount || !newTransaction.category || !newTransaction.description) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
@@ -202,21 +222,21 @@ export const useAppLogic = () => {
             Alert.alert('Success', 'Transaction added!');
         }
         setNewTransaction({ amount: '', category: '', description: '', type: 'expense', isRecurring: false, frequency: 'monthly' });
-    }, [newTransaction, setTransactions, setRecurringIncome]); // Add dependencies
+    }, [newTransaction, setTransactions, setRecurringIncome]);
 
-    const deleteTransaction = useCallback((id) => { // Wrap in useCallback
+    const deleteTransaction = useCallback((id) => {
         setTransactions(prev => prev.filter(t => t.id !== id));
         setShowDeleteModal(false);
         setSelectedTransaction(null);
         Alert.alert('Success', 'Transaction deleted!');
     }, [setTransactions]);
 
-    const deleteRecurring = useCallback((id) => { // Wrap in useCallback
+    const deleteRecurring = useCallback((id) => {
         setRecurringIncome(prev => prev.filter(r => r.id !== id));
         Alert.alert('Success', 'Recurring income removed!');
     }, [setRecurringIncome]);
 
-    const setInitialBalance = useCallback(() => { // Wrap in useCallback
+    const setInitialBalance = useCallback(() => {
         if (balanceInput.trim() === '') {
             Alert.alert('Error', 'Please enter a balance amount');
             return;
@@ -228,7 +248,7 @@ export const useAppLogic = () => {
         Alert.alert('Success', `Starting balance set to ${balance.toFixed(2)}`);
     }, [balanceInput, setStartingBalance]);
 
-    const addMultipleTransactions = useCallback((selectedItems, originatingReceiptId) => { // Wrap in useCallback
+    const addMultipleTransactions = useCallback((selectedItems, originatingReceiptId) => {
         if (!originatingReceiptId) {
             console.error("originatingReceiptId is missing in addMultipleTransactions");
             Alert.alert("Error", "Could not link transactions to the original receipt.");
@@ -253,7 +273,7 @@ export const useAppLogic = () => {
         Alert.alert('Success', `Added ${selectedItems.length} transactions from receipt! Receipt total updated.`);
     }, [setTransactions, setScannedReceipts]);
 
-    const processReceiptImage = useCallback(async (imageAsset) => { // Wrap in useCallback
+    const processReceiptImage = useCallback(async (imageAsset) => {
         if (!imageAsset || !imageAsset.uri) {
             return;
         }
@@ -263,14 +283,36 @@ export const useAppLogic = () => {
         try {
             let assetToProcess = imageAsset;
             if (imageAsset.width > imageAsset.height) {
-                // It's good that you are handling image rotation here.
-                // Ensure ImageResizer is correctly linked.
                 const rotatedImage = await ImageResizer.createResizedImage(imageAsset.uri, imageAsset.height, imageAsset.width, 'JPEG', 90, 90, undefined);
                 assetToProcess = rotatedImage;
             }
 
-            const ocrResult = await performEnhancedMLKitOCR(assetToProcess.uri, ocrSettings);
-            const parsedReceipt = parseReceiptAdvanced(ocrResult.text, ocrResult.blocks);
+            // NEW: Choose parsing method based on user preference and model availability
+            let parsedReceipt;
+            let ocrResult;
+            
+            if (useEnhancedParsing) {
+                console.log('🤖 Using enhanced Mistral AI parsing...');
+                try {
+                    parsedReceipt = await parseReceiptWithMistralAI(assetToProcess.uri, ocrSettings);
+                    // Extract OCR result from the enhanced parsing for debugging
+                    ocrResult = parsedReceipt.originalOcrResult || {
+                        text: 'Enhanced parsing used',
+                        blocks: [],
+                        confidence: parsedReceipt.confidence || 0.9,
+                        engine: parsedReceipt.engine || 'Mistral Enhanced'
+                    };
+                } catch (error) {
+                    console.warn('🔄 Mistral parsing failed, falling back to standard method:', error);
+                    // Fallback to standard parsing
+                    ocrResult = await performEnhancedMLKitOCR(assetToProcess.uri, ocrSettings);
+                    parsedReceipt = parseReceiptAdvanced(ocrResult.text, ocrResult.blocks);
+                }
+            } else {
+                console.log('📝 Using standard ML Kit parsing...');
+                ocrResult = await performEnhancedMLKitOCR(assetToProcess.uri, ocrSettings);
+                parsedReceipt = parseReceiptAdvanced(ocrResult.text, ocrResult.blocks);
+            }
 
             setOcrDebugInfo({ ocrResult, parsedReceipt, processingTime: new Date().toISOString() });
 
@@ -284,7 +326,8 @@ export const useAppLogic = () => {
                 confidence: ocrResult.confidence,
                 attempts: ocrResult.attempts,
                 scanDate: new Date().toISOString().split('T')[0],
-                isTotalDerived: false
+                isTotalDerived: false,
+                enhancedParsing: useEnhancedParsing // NEW: Track which method was used
             };
             setScannedReceipts(prev => [receipt, ...prev]);
 
@@ -294,26 +337,28 @@ export const useAppLogic = () => {
                 setShowMultipleItemsModal(true);
             } else if (parsedReceipt.items && parsedReceipt.items.length === 1) {
                 const item = parsedReceipt.items[0];
-                setNewTransaction(prev => ({ ...prev, amount: item.amount.toString(), category: item.category, description: item.description })); // Use functional update
+                setNewTransaction(prev => ({ ...prev, amount: item.amount.toString(), category: item.category, description: item.description }));
                 setActiveTab('add');
-                Alert.alert('✅ Enhanced OCR Success!', `Found: ${item.description}\nPrice: $${item.amount.toFixed(2)}`);
+                const enhancedText = useEnhancedParsing ? ' (Enhanced AI)' : '';
+                Alert.alert(`✅ OCR Success!${enhancedText}`, `Found: ${item.description}\nPrice: ${item.amount.toFixed(2)}`);
             } else {
-                Alert.alert('📄 OCR Analysis Complete', `Engine: ${ocrResult.engine}\nInitial Total Guess: $${parsedReceipt.total.toFixed(2)}\n\nNo distinct items found by OCR. Tap the receipt in the list to view raw text.`);
+                const enhancedText = useEnhancedParsing ? ' (Enhanced AI)' : '';
+                Alert.alert(`📄 OCR Analysis Complete${enhancedText}`, `Engine: ${ocrResult.engine}\nInitial Total Guess: ${parsedReceipt.total.toFixed(2)}\n\nNo distinct items found. Tap the receipt in the list to view details.`);
             }
         } catch (error) {
-            console.error('❌ Enhanced OCR Failed:', error);
-            Alert.alert('❌ OCR Processing Failed', `Error: ${error.message}\n\n💡 Try improving lighting or checking OCR settings.`);
+            console.error('❌ Receipt processing failed:', error);
+            Alert.alert('❌ OCR Processing Failed', `Error: ${error.message}\n\n💡 Try improving lighting or check OCR settings.`);
         } finally {
             setIsProcessingReceipt(false);
         }
-    }, [ocrSettings, setScannedReceipts, setExtractedItems, setNewTransaction, setActiveTab, setOcrDebugInfo]); // Add all dependencies
+    }, [ocrSettings, setScannedReceipts, setExtractedItems, setNewTransaction, setActiveTab, setOcrDebugInfo, useEnhancedParsing]);
 
-    const openCamera = useCallback(() => { // Wrap in useCallback
+    const openCamera = useCallback(() => {
         const options = { mediaType: 'photo', quality: 0.9, maxWidth: 1600, maxHeight: 2400 };
         launchCamera(options, (response) => {
             if (response.didCancel) return;
             if (response.errorCode) {
-                console.error('Camera Error:', response.errorCode, response.errorMessage); // Log full error
+                console.error('Camera Error:', response.errorCode, response.errorMessage);
                 Alert.alert('Camera Error', response.errorMessage);
                 return;
             }
@@ -321,14 +366,14 @@ export const useAppLogic = () => {
                 processReceiptImage(response.assets[0]);
             }
         });
-    }, [processReceiptImage]); // Dependency on processReceiptImage
+    }, [processReceiptImage]);
 
-    const openGallery = useCallback(() => { // Wrap in useCallback
+    const openGallery = useCallback(() => {
         const options = { mediaType: 'photo', quality: 0.9, maxWidth: 1600, maxHeight: 2400 };
         launchImageLibrary(options, (response) => {
             if (response.didCancel) return;
             if (response.errorCode) {
-                console.error('Gallery Error:', response.errorCode, response.errorMessage); // Log full error
+                console.error('Gallery Error:', response.errorCode, response.errorMessage);
                 Alert.alert('Gallery Error', response.errorMessage);
                 return;
             }
@@ -336,27 +381,19 @@ export const useAppLogic = () => {
                 processReceiptImage(response.assets[0]);
             }
         });
-    }, [processReceiptImage]); // Dependency on processReceiptImage
+    }, [processReceiptImage]);
 
-    const scanReceipt = useCallback(async () => { // Wrap in useCallback
-        // Check permissions before showing the scanner options
+    const scanReceipt = useCallback(async () => {
         if (!hasCriticalPermissions) {
             Alert.alert(
                 'Permission Required',
                 'Camera and storage permissions are essential to scan receipts. Please grant them.',
                 [
                     { text: 'OK', onPress: async () => {
-                        // Attempt to request again if the user taps OK
                         const granted = await requestAppPermissions();
                         if (granted) {
                             setHasCriticalPermissions(true);
-                            // If permissions are granted now, proceed with showing options
-                            Alert.alert('Enhanced Receipt Scanner', 'Choose a source for the receipt image.', [
-                                { text: '📷 Camera', onPress: openCamera },
-                                { text: '🖼️ Gallery', onPress: openGallery },
-                                { text: '⚙️ Settings', onPress: () => setShowOcrSettingsModal(true) },
-                                { text: 'Cancel', style: 'cancel' }
-                            ]);
+                            showScannerOptions();
                         }
                     }},
                     { text: 'Cancel', style: 'cancel' }
@@ -365,28 +402,35 @@ export const useAppLogic = () => {
             return;
         }
 
-        Alert.alert('Enhanced Receipt Scanner', 'Choose a source for the receipt image.', [
+        showScannerOptions();
+    }, [hasCriticalPermissions, openCamera, openGallery, setShowOcrSettingsModal]);
+
+    // NEW: Helper function to show scanner options
+    const showScannerOptions = useCallback(() => {
+        const enhancedText = useEnhancedParsing ? ' (AI Enhanced)' : '';
+        Alert.alert(`📷 Receipt Scanner${enhancedText}`, 'Choose a source for the receipt image.', [
             { text: '📷 Camera', onPress: openCamera },
             { text: '🖼️ Gallery', onPress: openGallery },
             { text: '⚙️ Settings', onPress: () => setShowOcrSettingsModal(true) },
+            { text: '🤖 AI Model', onPress: () => setShowModelDownloaderModal(true) }, // NEW
             { text: 'Cancel', style: 'cancel' }
         ]);
-    }, [hasCriticalPermissions, openCamera, openGallery, setShowOcrSettingsModal]); // Add all dependencies
+    }, [useEnhancedParsing, openCamera, openGallery, setShowOcrSettingsModal, setShowModelDownloaderModal]);
 
     return {
         activeTab, setActiveTab,
-        transactions, setTransactions, // Expose setter if needed elsewhere for direct modification
+        transactions, setTransactions,
         recurringIncome, setRecurringIncome,
         scannedReceipts, setScannedReceipts,
         startingBalance, setStartingBalance,
         ocrSettings, setOcrSettings,
 
-        isLoading, // Exposed to App.js for loading indicator
-        hasCriticalPermissions, // Expose permission status if UI needs to react to it
+        isLoading,
+        hasCriticalPermissions,
 
         showStartingBalanceModal, setShowStartingBalanceModal,
         balanceInput, setBalanceInput,
-        isProcessingReceipt, setIsProcessingReceipt, // Expose setter for external control if needed
+        isProcessingReceipt, setIsProcessingReceipt,
         newTransaction, setNewTransaction,
         showDeleteModal, setShowDeleteModal,
         selectedTransaction, setSelectedTransaction,
@@ -397,8 +441,12 @@ export const useAppLogic = () => {
         showOcrSettingsModal, setShowOcrSettingsModal,
         selectedReceipt, setSelectedReceipt,
         extractedItems, setExtractedItems,
-        ocrDebugInfo, setOcrDebugInfo, // Expose setter for external control if needed
-        currentReceiptIdForMultiAdd, setCurrentReceiptIdForMultiAdd, // Expose setter for external control if needed
+        ocrDebugInfo, setOcrDebugInfo,
+        currentReceiptIdForMultiAdd, setCurrentReceiptIdForMultiAdd,
+
+        // NEW: Mistral AI related states and functions
+        showModelDownloaderModal, setShowModelDownloaderModal,
+        useEnhancedParsing, setUseEnhancedParsing,
 
         // Functions
         addTransaction,
@@ -406,9 +454,6 @@ export const useAppLogic = () => {
         deleteRecurring,
         setInitialBalance,
         addMultipleTransactions,
-        scanReceipt, // Now calls the new permission check
-        // openCamera, // Not typically returned if scanReceipt handles the choice
-        // openGallery, // Not typically returned if scanReceipt handles the choice
-        // processReceiptImage, // Not typically returned if scanReceipt handles the flow
+        scanReceipt,
     };
 };
